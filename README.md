@@ -1,3 +1,170 @@
+# DreamerV3 RTX 5090 Crafter Run
+
+This fork contains a working DreamerV3 setup for a single NVIDIA GeForce RTX 5090 and a trained Crafter `size50m` checkpoint artifact.
+
+## Training Result
+
+| Item | Value |
+| --- | --- |
+| Task | `crafter_reward` |
+| Config | `crafter size50m` |
+| Hardware | Single NVIDIA GeForce RTX 5090, 32GB VRAM |
+| Driver / CUDA | NVIDIA driver 580.159.03, CUDA 13.0 |
+| Python | 3.11.15 |
+| JAX | 0.10.1 with `jax[cuda13]` |
+| Training reached | About 2.77M environment steps |
+| Recent 100 episode score mean | 12.15 |
+| Recent 100 episode score max | 15.10 |
+| Earlier 1.1M score mean | 8.34 |
+
+The run improved from a recent-100 score mean of about `8.34` at 1.1M steps to `12.15` at about 2.77M steps. Training toward 5M was stopped early by system RAM pressure from the replay buffer, not by GPU memory exhaustion.
+
+## Included Training Artifact
+
+The important training outputs are stored under:
+
+```text
+training_artifacts/
+```
+
+The full artifact is split into files below GitHub's 100MB hard file limit:
+
+```text
+training_artifacts/crafter_size50m_2.77m.tar.zst.part-000
+training_artifacts/crafter_size50m_2.77m.tar.zst.part-001
+training_artifacts/crafter_size50m_2.77m.tar.zst.part-002
+training_artifacts/crafter_size50m_2.77m.tar.zst.part-003
+training_artifacts/crafter_size50m_2.77m.tar.zst.part-004
+```
+
+Reconstruct and extract after cloning:
+
+```bash
+cd training_artifacts
+cat crafter_size50m_2.77m.tar.zst.part-* > crafter_size50m_2.77m.tar.zst
+tar --zstd -xf crafter_size50m_2.77m.tar.zst
+```
+
+The extracted directory contains:
+
+```text
+crafter_size50m_2.77m/
+  ckpt/20260616T192326F256097/agent.pkl
+  ckpt/20260616T192326F256097/step.pkl
+  ckpt/20260616T192326F256097/replay.pkl
+  ckpt/20260616T192326F256097/done
+  ckpt/latest
+  config.yaml
+  metrics.jsonl
+  scores.jsonl
+  train_stdout.txt
+```
+
+The 25GB replay buffer is intentionally not included. The checkpoint weights, config, metrics, scores, and stdout log are the reusable training results.
+
+## Restore Checkpoint Layout
+
+DreamerV3 expects checkpoints under a logdir `ckpt/` directory. One simple restore layout is:
+
+```bash
+mkdir -p logdir/dreamer/crafter_size50m_5090/ckpt
+cp -r training_artifacts/crafter_size50m_2.77m/ckpt/20260616T192326F256097 \
+  logdir/dreamer/crafter_size50m_5090/ckpt/
+printf '20260616T192326F256097' > logdir/dreamer/crafter_size50m_5090/ckpt/latest
+```
+
+## RTX 5090 Setup Notes
+
+The upstream `requirements.txt` pins an older CUDA 12 JAX build. For RTX 5090 / Blackwell, use the CUDA 13 JAX wheel instead:
+
+```bash
+conda create -y -n DreamV3 python=3.11 pip
+conda activate DreamV3
+pip install -U "jax[cuda13]"
+```
+
+Install the remaining requirements while skipping the old JAX/CUDA12 pins and `numpy<2`, because JAX 0.10 requires NumPy 2:
+
+```bash
+awk '!/^jax\[cuda12\]==/ && !/^nvidia-cuda-nvcc-cu12/ && !/^numpy<2/' \
+  requirements.txt > /tmp/dreamerv3_requirements_filtered.txt
+pip install -r /tmp/dreamerv3_requirements_filtered.txt
+pip install crafter
+```
+
+This repo also includes small source compatibility patches for JAX 0.10, changing old positional `jax.jit()` sharding arguments to keyword arguments.
+
+## Run Commands
+
+Debug run:
+
+```bash
+python dreamerv3/main.py \
+  --logdir /home/ofeai/DreamerV3/logdir/dreamer/debug_crafter \
+  --configs crafter debug \
+  --run.train_ratio 32 \
+  --jax.platform cuda
+```
+
+Crafter `size50m` run:
+
+```bash
+python dreamerv3/main.py \
+  --logdir /home/ofeai/DreamerV3/logdir/dreamer/crafter_size50m_5090 \
+  --configs crafter size50m \
+  --run.train_ratio 32 \
+  --jax.platform cuda
+```
+
+Continue toward 5M steps with reduced replay size to avoid RAM exhaustion:
+
+```bash
+python dreamerv3/main.py \
+  --logdir /home/ofeai/DreamerV3/logdir/dreamer/crafter_size50m_5090 \
+  --configs crafter size50m \
+  --run.train_ratio 32 \
+  --run.steps 5e6 \
+  --replay.size 2e6 \
+  --jax.platform cuda
+```
+
+## View Curves
+
+This environment used the `scope` CLI entry point:
+
+```bash
+scope --basedir /home/ofeai/DreamerV3/logdir --port 8000
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Important curves:
+
+```text
+episode/score
+episode/length
+replay/replay_ratio
+train/loss/image
+train/loss/dyn
+train/loss/rew
+train/rand/action
+fps/policy
+fps/train
+usage/nvsmi/compute_avg/gpu0
+```
+
+For detailed environment notes, see:
+
+```text
+dreamerv3_training_notes.md
+```
+
+---
+
 # Mastering Diverse Domains through World Models
 
 A reimplementation of [DreamerV3][paper], a scalable and general reinforcement
