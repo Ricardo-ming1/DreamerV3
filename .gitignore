@@ -13,3 +13,9 @@ logdir/
 wandb/
 runs/
 .DS_Store
+
+# Raw training artifacts kept local; GitHub upload uses split archives
+training_artifacts/**/*.pkl
+training_artifacts/**/*.tar.zst
+training_artifacts/crafter_size50m_2.77m/
+training_artifacts/*.tar.zst
